@@ -19,7 +19,8 @@ jobs:
     - name: set Docker repository
       run: |
         # set Docker repository default to tne same name as GitHub repository if not defined
-        echo "::set-env name=DOCKER_REPOSITORY::${${{ secrets.DOCKER_REPOSITORY }}:-$GITHUB_REPOSITORY}"
+        docker_repository=${{ secrets.DOCKER_REPOSITORY }}
+        echo "::set-env name=DOCKER_REPOSITORY::${docker_repository:-$GITHUB_REPOSITORY}"
 
     - name: decide on tag
       run: |
