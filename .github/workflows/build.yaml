@@ -33,7 +33,7 @@ jobs:
         DOCKER_BUILDKIT: 1
         DOCKER_REPO:
       run: |
-        docker build --tag ${GITHUB_REPOSITORY}:${IMAGE_TAG} .
+        docker build --tag ${DOCKER_REPOSITORY}:${IMAGE_TAG} .
     
     - name: push image
       env:
@@ -41,5 +41,5 @@ jobs:
         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
       run: |
         echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin
-        docker push ${GITHUB_REPOSITORY}:${IMAGE_TAG}
+        docker push ${DOCKER_REPOSITORY}:${IMAGE_TAG}
         docker logout
