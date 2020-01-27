@@ -19,6 +19,10 @@ var (
 	Version = "dev"
 	// BuildDate contains a string with the build date.
 	BuildDate = "unknown"
+	// GitCommit git commit SHA
+	GitCommit = "dirty"
+	// GitBranch git branch
+	GitBranch = "master"
 )
 
 func mainCmd(c *cli.Context) error {
@@ -70,6 +74,8 @@ func main() {
 	cli.VersionPrinter = func(c *cli.Context) {
 		fmt.Printf("goapp %s\n", Version)
 		fmt.Printf("  Build date: %s\n", BuildDate)
+		fmt.Printf("  Git commit: %s\n", GitCommit)
+		fmt.Printf("  Git branch: %s\n", GitBranch)
 		fmt.Printf("  Built with: %s\n", runtime.Version())
 	}
 
