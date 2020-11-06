@@ -1,54 +1,93 @@
-name: Docker Image CI
+name: docker
 
 on:
   push:
     branches:
-      - '*'
+    - '*'
     tags:
-      - '*'
+    - '*'
+    paths-ignore:
+    - 'docs/**'
+    - 'deploy/**'
+    - '*.md'
+  pull_request:
+    branches:
+    - '*'
 
 jobs:
 
   build:
  
     runs-on: ubuntu-18.04
+    # skip commit with "[skip ci]" comment
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
  
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
 
-    - name: decide on tag
-      id: decide_tag
-      run: |
-        image_tag=$(echo $GITHUB_REF | sed -e 's/refs\/heads\///g' -e 's/refs\/tags\///g' | sed -e 's/master/latest/g')
-        echo ::set-output name=image_tag::${image_tag}
-        echo "::debug::docker image tag ${image_tag}"
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v1
       
-    - name: decide on image name
-      id: decide_name
+    - name: Set up Docker buildx
+      id: buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Login to DockerHub
+      uses: docker/login-action@v1 
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v1
+      with:
+        registry: ghcr.io
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.CR_PAT }}
+      
+    - name: Available platforms
+      run: echo ${{ steps.buildx.outputs.platforms }}
+
+    - name: Decide on tag
+      id: image_tag
+      run: |
+        tag=$(echo $GITHUB_REF | sed -e 's/refs\/heads\///g' -e 's/refs\/tags\///g' | sed -e 's/master/latest/g')
+        echo ::set-output name=tag::${tag}
+        echo ::debug::docker image tag ${tag}
+      
+    - name: Decide on image name
+      id: image_name
       env:
         DOCKER_REPOSITORY: ${{ secrets.DOCKER_REPOSITORY }}
       run: |
-        image_name=${DOCKER_REPOSITORY}
-        if [ -z "$image_name" ]; then image_name=${GITHUB_REPOSITORY}; fi
-        echo ::set-output name=image_name::${image_name}
-        echo "::debug::docker image name ${image_name}"
+        name=${DOCKER_REPOSITORY}
+        if [ -z "$name" ]; then name=${GITHUB_REPOSITORY}; fi
+        echo ::set-output name=name::${name}
+        echo ::debug::docker image name ${name}
 
-    - name: build image
-      env:
-        DOCKER_BUILDKIT: 1
-        IMAGE_NAME: ${{ steps.decide_name.outputs.image_name }}
-        IMAGE_TAG: ${{ steps.decide_tag.outputs.image_tag }}
-      run: |
-        docker build --tag ${IMAGE_NAME}:${IMAGE_TAG} .
-    
-    - name: push image
-      env:
-        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-        DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
-        IMAGE_NAME: ${{ steps.decide_name.outputs.image_name }}
-        IMAGE_TAG: ${{ steps.decide_tag.outputs.image_tag }}
-      run: |
-        echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin ${DOCKER_REGISTRY}
-        docker push ${IMAGE_NAME}:${IMAGE_TAG}
-        docker logout
+    - name: Cache Docker layers
+      uses: actions/cache@v2
+      id: cache
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
+
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@v2
+      with:
+        build-args: VERSION=${{ steps.image_tag.tag }}
+        platforms: linux/amd64,linux/arm64
+        cache-from: type=local,src=/tmp/.buildx-cache
+        cache-to: type=local,dest=/tmp/.buildx-cache
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/${{ steps.image_name.name }}:${{ steps.image_tag.tag }}
+          ${{ secrets.DOCKER_USERNAME }}/${{ steps.image_name.name }}:latest
+          ghcr.io/${{ github.repository_owner }}/${{ steps.image_name.name }}:${{ steps.image_tag.tag }}
+          ghcr.io/${{ github.repository_owner }}/${{ steps.image_name.name }}:latest
+        push: true
+
+    - name: image digest
+      run: echo ${{ steps.build.outputs.digest }}
