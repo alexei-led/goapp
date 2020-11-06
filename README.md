@@ -1,4 +1,4 @@
-[![](https://github.com/alexeiled/goapp/workflows/Docker%20Image%20CI/badge.svg)](https://github.com/alexeiled/goapp/actions?query=workflow%3A"Docker+Image+CI") [![Docker Pulls](https://img.shields.io/docker/pulls/alexeiled/goapp.svg?style=popout)](https://hub.docker.com/r/alexeiled/goapp) [![](https://images.microbadger.com/badges/image/alexeiled/goapp.svg)](https://microbadger.com/images/alexeiled/goapp "Get your own image badge on microbadger.com")
+[![](https://github.com/alexeiled/goapp/workflows/docker/badge.svg)](https://github.com/alexeiled/goapp/actions?query=workflow%3A"docker") [![Docker Pulls](https://img.shields.io/docker/pulls/alexeiled/goapp.svg?style=popout)](https://hub.docker.com/r/alexeiled/goapp) [![](https://images.microbadger.com/badges/image/alexeiled/goapp.svg)](https://microbadger.com/images/alexeiled/goapp "Get your own image badge on microbadger.com")
 
 # goapp
 
