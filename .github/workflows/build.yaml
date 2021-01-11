@@ -18,7 +18,7 @@ jobs:
 
   build:
  
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     # skip commit with "[skip ci]" comment
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
  
@@ -32,9 +32,10 @@ jobs:
       id: buildx
       uses: docker/setup-buildx-action@v1
 
-    - name: Login to DockerHub
+    - name: Login to Docker Registry
       uses: docker/login-action@v1 
       with:
+        registry: ${{ secrets.DOCKER_REGISTRY }}
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
@@ -46,24 +47,26 @@ jobs:
         password: ${{ secrets.CR_PAT }}
       
     - name: Available platforms
-      run: echo ${{ steps.buildx.outputs.platforms }}
+      run: echo "${{ steps.buildx.outputs.platforms }}"
 
-    - name: Decide on tag
-      id: image_tag
-      run: |
-        tag=$(echo $GITHUB_REF | sed -e 's/refs\/heads\///g' -e 's/refs\/tags\///g' | sed -e 's/master/latest/g')
-        echo ::set-output name=tag::${tag}
-        echo ::debug::docker image tag ${tag}
-      
     - name: Decide on image name
-      id: image_name
+      id: nomenclator
       env:
         DOCKER_REPOSITORY: ${{ secrets.DOCKER_REPOSITORY }}
       run: |
         name=${DOCKER_REPOSITORY}
-        if [ -z "$name" ]; then name=${GITHUB_REPOSITORY}; fi
+        if [ -z "$name" ]; then
+          name=${{ github.repository }}
+        fi
         echo ::set-output name=name::${name}
         echo ::debug::docker image name ${name}
+
+    - name: Decide on tag
+      id: tagger
+      run: |
+        tag=$(echo "${{ github.ref }}" | sed -e 's/^refs\/heads\///g' -e 's/^refs\/tags\///g' -e 's/^refs\/pull\///g' -e 's/\/merge$//g' | sed -e 's/master/latest/g')
+        echo "::set-output name=tag::${tag}"
+        echo "::debug::docker image tag ${tag}"
 
     - name: Cache Docker layers
       uses: actions/cache@v2
@@ -75,19 +78,19 @@ jobs:
           ${{ runner.os }}-buildx-
 
     - name: Build and push Docker image
-      id: build
+      id: build-push
       uses: docker/build-push-action@v2
       with:
-        build-args: VERSION=${{ steps.image_tag.tag }}
+        build-args: VERSION=${{ steps.tagger.outputs.tag }}
         platforms: linux/amd64,linux/arm64
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache
         tags: |
-          ${{ secrets.DOCKER_USERNAME }}/${{ steps.image_name.name }}:${{ steps.image_tag.tag }}
-          ${{ secrets.DOCKER_USERNAME }}/${{ steps.image_name.name }}:latest
-          ghcr.io/${{ github.repository_owner }}/${{ steps.image_name.name }}:${{ steps.image_tag.tag }}
-          ghcr.io/${{ github.repository_owner }}/${{ steps.image_name.name }}:latest
+         ${{ github.repository }}:${{ steps.tagger.outputs.tag }}
+         ${{ github.repository }}:latest
+         ghcr.io/${{ steps.nomenclator.outputs.name }}:${{ steps.tagger.outputs.tag }}
+         ghcr.io/${{ steps.nomenclator.outputs.name }}:latest
         push: true
 
     - name: image digest
-      run: echo ${{ steps.build.outputs.digest }}
+      run: echo "${{ steps.build-push.outputs.digest }}"

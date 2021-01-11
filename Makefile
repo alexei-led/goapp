@@ -1,14 +1,17 @@
-MODULE   = $(shell env GO111MODULE=on $(GO) list -m)
+MODULE   = $(shell $(GO) list -m)
 DATE    ?= $(shell date +%FT%T%z)
 VERSION ?= $(shell git describe --tags --always --dirty --match="v*" 2> /dev/null || \
 			cat $(CURDIR)/.version 2> /dev/null || echo v0)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 BRANCH  ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
-PKGS     = $(or $(PKG),$(shell env GO111MODULE=on $(GO) list ./...))
-TESTPKGS = $(shell env GO111MODULE=on $(GO) list -f \
+PKGS     = $(shell $(GO) list ./...)
+TESTPKGS = $(shell $(GO) list -f \
 			'{{ if or .TestGoFiles .XTestGoFiles }}{{ .ImportPath }}{{ end }}' \
 			$(PKGS))
+LINT_CONFIG = $(CURDIR)/.golangci.yml
 BIN      = $(CURDIR)/.bin
+TARGETOS   ?= $(GOOS)
+TARGETARCH ?= $(GOARCH)
 
 GO      = go
 TIMEOUT = 15
@@ -21,33 +24,32 @@ export CGO_ENABLED=0
 export GOPROXY=https://proxy.golang.org
 
 .PHONY: all
-all: fmt lint | $(BIN) ; $(info $(M) building executable…) @ ## Build program binary
-	$Q $(GO) build \
+all: fmt lint test ; $(info $(M) building $(TARGETOS)/$(TARGETARCH) binary...) @ ## Build program binary
+	$Q env GOOS=$(TARGETOS) GOARCH=$(TARGETARCH) $(GO) build \
 		-tags release \
 		-ldflags '-X main.Version=$(VERSION) -X main.BuildDate=$(DATE) -X main.GitCommit=$(COMMIT) -X main.GitBranch=$(BRANCH)' \
-		-o $(BIN)/$(basename $(MODULE)) main.go
+		-o $(BIN)/$(basename $(MODULE)) ./cmd/main.go
 
 # Tools
 
-$(BIN):
-	@mkdir -p $@
-$(BIN)/%: | $(BIN) ; $(info $(M) building $(PACKAGE)…)
-	$Q tmp=$$(mktemp -d); \
-	   env GO111MODULE=off GOPATH=$$tmp GOBIN=$(BIN) $(GO) get $(PACKAGE) \
-		|| ret=$$?; \
-	   rm -rf $$tmp ; exit $$ret
+setup-tools: setup-lint setup-gocov setup-gocov-xml setup-go2xunit setup-mockery
 
-GOLINT = $(BIN)/golint
-$(BIN)/golint: PACKAGE=golang.org/x/lint/golint
+setup-lint:
+	$(GO) get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.33.0
+setup-gocov:
+	$(GO) get github.com/axw/gocov/...
+setup-gocov-xml:
+	$(GO) get github.com/AlekSi/gocov-xml
+setup-go2xunit:
+	$(GO) get github.com/tebeka/go2xunit
+setup-mockery:
+	$(GO) get github.com/vektra/mockery/v2/
 
-GOCOV = $(BIN)/gocov
-$(BIN)/gocov: PACKAGE=github.com/axw/gocov/...
-
-GOCOVXML = $(BIN)/gocov-xml
-$(BIN)/gocov-xml: PACKAGE=github.com/AlekSi/gocov-xml
-
-GO2XUNIT = $(BIN)/go2xunit
-$(BIN)/go2xunit: PACKAGE=github.com/tebeka/go2xunit
+GOLINT=golangci-lint
+GOCOV=gocov
+GOCOVXML=gocov-xml
+GO2XUNIT=go2xunit
+GOMOCK=mockery
 
 # Tests
 
@@ -59,10 +61,10 @@ test-verbose: ARGS=-v            ## Run tests in verbose mode with coverage repo
 test-race:    ARGS=-race         ## Run tests with race detector
 $(TEST_TARGETS): NAME=$(MAKECMDGOALS:test-%=%)
 $(TEST_TARGETS): test
-check test tests: fmt lint ; $(info $(M) running $(NAME:%=% )tests…) @ ## Run tests
+check test tests: fmt ; $(info $(M) running $(NAME:%=% )tests...) @ ## Run tests
 	$Q $(GO) test -timeout $(TIMEOUT)s $(ARGS) $(TESTPKGS)
 
-test-xml: fmt lint | $(GO2XUNIT) ; $(info $(M) running xUnit tests…) @ ## Run tests with xUnit output
+test-xml: fmt | setup-go2xunit ; $(info $(M) running xUnit tests...) @ ## Run tests with xUnit output
 	$Q mkdir -p test
 	$Q 2>&1 $(GO) test -timeout $(TIMEOUT)s -v $(TESTPKGS) | tee test/tests.output
 	$(GO2XUNIT) -fail -input test/tests.output -output test/tests.xml
@@ -72,9 +74,9 @@ COVERAGE_PROFILE = $(COVERAGE_DIR)/profile.out
 COVERAGE_XML     = $(COVERAGE_DIR)/coverage.xml
 COVERAGE_HTML    = $(COVERAGE_DIR)/index.html
 .PHONY: test-coverage test-coverage-tools
-test-coverage-tools: | $(GOCOV) $(GOCOVXML)
+test-coverage-tools: | setup-gocov setup-gocov-xml
 test-coverage: COVERAGE_DIR := $(CURDIR)/test/coverage.$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-test-coverage: fmt lint test-coverage-tools ; $(info $(M) running coverage tests…) @ ## Run coverage tests
+test-coverage: fmt test-coverage-tools ; $(info $(M) running coverage tests...) @ ## Run coverage tests
 	$Q mkdir -p $(COVERAGE_DIR)
 	$Q $(GO) test \
 		-coverpkg=$$($(GO) list -f '{{ join .Deps "\n" }}' $(TESTPKGS) | \
@@ -86,17 +88,23 @@ test-coverage: fmt lint test-coverage-tools ; $(info $(M) running coverage tests
 	$Q $(GOCOV) convert $(COVERAGE_PROFILE) | $(GOCOVXML) > $(COVERAGE_XML)
 
 .PHONY: lint
-lint: | $(GOLINT) ; $(info $(M) running golint…) @ ## Run golint
-	$Q $(GOLINT) -set_exit_status $(PKGS)
+lint: setup-lint; $(info $(M) running golangci-lint...) @ ## Run golangci-lint
+	$Q $(GOLINT) run -v -c $(LINT_CONFIG) ./...
+
+# generate test mock for interfaces
+.PHONY: mockgen
+mockgen: | setup-mockery ; $(info $(M) generating mocks...) @ ## Run mockery
+	$Q $(GOMOCK)  --dir internal --recursive --all
+	$Q $(GOMOCK)  --dir public --recursive --all
 
 .PHONY: fmt
-fmt: ; $(info $(M) running gofmt…) @ ## Run gofmt on all source files
+fmt: ; $(info $(M) running gofmt...) @ ## Run gofmt on all source files
 	$Q $(GO) fmt $(PKGS)
 
 # Misc
 
 .PHONY: clean
-clean: ; $(info $(M) cleaning…)	@ ## Cleanup everything
+clean: ; $(info $(M) cleaning...)	@ ## Cleanup everything
 	@rm -rf $(BIN)
 	@rm -rf test/tests.* test/coverage.*
 

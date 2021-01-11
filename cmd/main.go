@@ -27,6 +27,9 @@ var (
 
 func mainCmd(c *cli.Context) error {
 	log.Printf("running main command with %s", c.FlagNames())
+	if v := mainCtx.Value("key"); v != nil {
+		log.Printf("context value = %v", v)
+	}
 	return nil
 }
 
