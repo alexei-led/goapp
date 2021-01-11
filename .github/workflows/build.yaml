@@ -86,10 +86,10 @@ jobs:
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache
         tags: |
-         ${{ github.repository }}:${{ steps.tagger.outputs.tag }}
-         ${{ github.repository }}:latest
-         ghcr.io/${{ steps.nomenclator.outputs.name }}:${{ steps.tagger.outputs.tag }}
-         ghcr.io/${{ steps.nomenclator.outputs.name }}:latest
+         ${{ steps.nomenclator.outputs.name }}:${{ steps.tagger.outputs.tag }}
+          ${{ steps.nomenclator.outputs.name }}:latest
+         ghcr.io/${{ github.repository }}:${{ steps.tagger.outputs.tag }}
+         ghcr.io/${{ github.repository }}:latest
         push: true
 
     - name: image digest
