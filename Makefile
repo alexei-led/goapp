@@ -93,7 +93,7 @@ lint: setup-lint; $(info $(M) running golangci-lint...) @ ## Run golangci-lint
 
 # generate test mock for interfaces
 .PHONY: mockgen
-mockgen: | setup-mockery ; $(info $(M) generating mocks...) @ ## Run mockery
+mockgen: setup-mockery ; $(info $(M) generating mocks...) @ ## Run mockery
 	$Q $(GOMOCK)  --dir internal --recursive --all
 	$Q $(GOMOCK)  --dir public --recursive --all
 
